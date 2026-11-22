@@ -56,6 +56,120 @@ const MEASURES = [ // key, label, unit
 ];
 const PROTEIN_LEVELS = [[1.2, 'Moderate: 1.2 g per kg'], [1.6, 'Recommended for toning: 1.6 g per kg'], [2.0, 'High (heavy lifting): 2.0 g per kg']];
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
+// Exercise types for gym calories. METs approximate the Compendium of Physical Activities
+// (resistance training 3.5 to 6.0, calisthenics 3.8 to 8.0). Estimates, not lab values.
+const EX_CATS = {
+  legs: { label: 'Big leg / full-body lift', short: 'big leg/full-body', met: 6.0 },
+  upper: { label: 'Upper-body compound lift', short: 'upper-body compound', met: 5.0 },
+  body: { label: 'Bodyweight move', short: 'bodyweight', met: 4.5 },
+  core: { label: 'Core / abs', short: 'core', met: 3.8 },
+  iso: { label: 'Single-muscle (isolation)', short: 'isolation', met: 3.5 },
+};
+const GYM_INTENSITY_FACTOR = { light: 0.8, moderate: 1.0, hard: 1.2 }; // rest time & effort
+function guessCat(name) {
+  const n = ' ' + String(name || '').toLowerCase() + ' ';
+  if (/squat|deadlift|lunge|leg press|hip thrust|clean|snatch|thruster|swing|step.?up|good morning|farmer/.test(n)) return 'legs';
+  if (/plank|crunch|sit.?up| abs? |leg raise|russian twist|hollow|v.?up|ab wheel|core|dead bug|bird dog/.test(n)) return 'core';
+  if (/push.?up|pull.?up|chin.?up|dips?\b|burpee|muscle.?up|mountain climber|jumping|inverted row/.test(n)) return 'body';
+  if (/curl|raise|extension|fly\b|flye|pushdown|kickback|calf|shrug|face pull|pec deck|crossover|adduct|abduct/.test(n)) return 'iso';
+  return 'upper';
+}
+// Body-part split library: [name, part, equipment, calorie type]
+const PARTS = [['chest', 'Chest'], ['back', 'Back'], ['shoulders', 'Shoulders'], ['arms', 'Arms'], ['legs', 'Legs']];
+const PART_LABEL = Object.fromEntries(PARTS);
+
+/* ---------- Body figure (front + back) for the gym focus picker ---------- */
+const PART_MUSCLES = { chest: 'Chest (pecs)', back: 'Lats, traps, lower back', shoulders: 'Front, side and rear delts', arms: 'Biceps, triceps, forearms', legs: 'Quads, hamstrings, glutes, calves' };
+const figMir = (d) => d.replace(/(-?\d+\.?\d*),(-?\d+\.?\d*)/g, (m, x, y) => `${+(100 - +x).toFixed(1)},${y}`);
+const figLR = (d, p) => [[d, p], [figMir(d), p]];
+const FIG_SKIN = ['M45,25 L55,25 L57,33 L43,33 Z', 'M29,36 L71,36 Q75,50 70,60 Q65,78 64,96 L36,96 Q35,78 30,60 Q25,50 29,36 Z',
+  'M30,38 Q18,38 16,50 Q13,70 15,86 Q10,100 10,116 L18,118 Q24,102 26,90 Q30,74 30,58 Z',
+  'M33,112 Q28,140 33,164 Q31,182 35,202 L45,202 Q46,182 44,166 Q50,140 50,116 Z'].flatMap((d, i) => i < 2 ? [d] : [d, figMir(d)]);
+const FIG_DELT = 'M29,36 Q19,36 16,46 Q15,56 20,61 Q25,51 31,44 Z';
+const FIG_UPARM = 'M21,61 Q15,65 15,76 Q16,84 21,86 Q26,80 27,70 Q27,63 21,61 Z';
+const FIG_FOREARM = 'M20,88 Q14,92 12,104 Q12,112 15,114 Q20,108 23,98 Q25,90 20,88 Z';
+const FIG_FRONT = [
+  ...figLR('M43,30 Q36,33 29,36 L44,36 Z', 'back'), ...figLR(FIG_DELT, 'shoulders'),
+  ...figLR('M49,38 L33,38 Q27,44 29,54 Q35,62 49,58 Z', 'chest'),
+  ...figLR(FIG_UPARM, 'arms'), ...figLR(FIG_FOREARM, 'arms'),
+  ...figLR('M43,60 L49,60 L49,68 L43,68 Z', 'core'), ...figLR('M43,70 L49,70 L49,78 L43,78 Z', 'core'), ...figLR('M43.5,80 L49,80 L49,90 L44,89 Z', 'core'),
+  ...figLR('M31,57 Q30,72 35,90 L41,92 L41,62 Z', 'core'),
+  ...figLR('M34,116 Q30,132 33,152 Q36,162 41,163 Q40,140 41,120 Z', 'legs'), ...figLR('M42,119 Q42,140 41,163 Q47,164 48,156 Q50,138 49,123 Z', 'legs'),
+  ...figLR('M35,168 Q32,182 36,198 L42,198 Q45,182 43,168 Z', 'legs'),
+];
+const FIG_BACK = [
+  ['M50,26 L41,31 Q33,34 29,36 Q38,40 43,48 L50,66 L57,48 Q62,40 71,36 Q67,34 59,31 Z', 'back'], ...figLR(FIG_DELT, 'shoulders'),
+  ...figLR('M33,43 Q27,55 32,76 Q37,88 45,92 L45,64 Q40,54 33,43 Z', 'back'), ['M46,68 L54,68 L56,94 L44,94 Z', 'back'],
+  ...figLR(FIG_UPARM, 'arms'), ...figLR(FIG_FOREARM, 'arms'),
+  ...figLR('M36,98 Q32,108 36,118 Q44,122 49,116 L49,100 Z', 'legs'), ...figLR('M34,122 Q31,140 35,158 Q40,164 44,160 Q48,146 48,124 Z', 'legs'),
+  ...figLR('M35,166 Q30,180 36,192 Q40,196 43,192 Q47,180 44,166 Z', 'legs'),
+];
+function figView(v, on) {
+  const mus = (v === 'front' ? FIG_FRONT : FIG_BACK).map(([d, p]) => `<path class="mu${on.includes(p) ? ' on' : ''}" d="${d}"/>`).join('');
+  const shorts = v === 'front' ? '<path class="sh" d="M35,94 L65,94 L67,118 L52,120 L50,108 L48,120 L33,118 Z"/>' : '<path class="sh" d="M35,94 L65,94 L65.5,100 L34.5,100 Z"/>';
+  return `<ellipse class="sk" cx="50" cy="15" rx="9" ry="11"/>${FIG_SKIN.map((d) => `<path class="sk" d="${d}"/>`).join('')}<circle class="sk" cx="14" cy="119" r="4"/><circle class="sk" cx="86" cy="119" r="4"/><ellipse class="sk" cx="40" cy="205" rx="6" ry="3"/><ellipse class="sk" cx="60" cy="205" rx="6" ry="3"/>${v === 'front' ? mus + shorts : shorts + mus}`;
+}
+function bodySvg(on, views = ['front', 'back']) {
+  return `<svg class="fig" viewBox="0 0 ${views.length * 105 - 5} 210" aria-hidden="true">${views.map((v, i) => `<g transform="translate(${i * 105},0)">${figView(v, on)}</g>`).join('')}</svg>`;
+}
+const EQUIP = [['barbell', 'Barbell'], ['dumbbell', 'Dumbbell'], ['machine', 'Machine'], ['cable', 'Cable'], ['bodyweight', 'Bodyweight']];
+const EX_LIB = [
+  ['Bench press', 'chest', 'barbell', 'upper'], ['Incline bench press', 'chest', 'barbell', 'upper'],
+  ['Dumbbell bench press', 'chest', 'dumbbell', 'upper'], ['Incline dumbbell press', 'chest', 'dumbbell', 'upper'],
+  ['Machine chest press', 'chest', 'machine', 'upper'], ['Push-up', 'chest', 'bodyweight', 'body'], ['Chest dips', 'chest', 'bodyweight', 'body'],
+  ['Dumbbell fly', 'chest', 'dumbbell', 'iso'], ['Cable crossover', 'chest', 'cable', 'iso'], ['Pec deck', 'chest', 'machine', 'iso'],
+  ['Deadlift', 'back', 'barbell', 'legs'], ['Barbell row', 'back', 'barbell', 'upper'], ['T-bar row', 'back', 'barbell', 'upper'],
+  ['One-arm dumbbell row', 'back', 'dumbbell', 'upper'], ['Lat pulldown', 'back', 'cable', 'upper'], ['Seated cable row', 'back', 'cable', 'upper'],
+  ['Machine row', 'back', 'machine', 'upper'], ['Pull-up', 'back', 'bodyweight', 'body'], ['Chin-up', 'back', 'bodyweight', 'body'],
+  ['Straight-arm pulldown', 'back', 'cable', 'iso'], ['Back extension', 'back', 'bodyweight', 'core'],
+  ['Overhead press', 'shoulders', 'barbell', 'upper'], ['Dumbbell shoulder press', 'shoulders', 'dumbbell', 'upper'], ['Arnold press', 'shoulders', 'dumbbell', 'upper'],
+  ['Machine shoulder press', 'shoulders', 'machine', 'upper'], ['Upright row', 'shoulders', 'barbell', 'upper'], ['Pike push-up', 'shoulders', 'bodyweight', 'body'],
+  ['Lateral raise', 'shoulders', 'dumbbell', 'iso'], ['Cable lateral raise', 'shoulders', 'cable', 'iso'], ['Front raise', 'shoulders', 'dumbbell', 'iso'],
+  ['Rear delt fly', 'shoulders', 'dumbbell', 'iso'], ['Reverse pec deck', 'shoulders', 'machine', 'iso'], ['Face pull', 'shoulders', 'cable', 'iso'],
+  ['Close-grip bench press', 'arms', 'barbell', 'upper'], ['Tricep dips', 'arms', 'bodyweight', 'body'], ['Diamond push-up', 'arms', 'bodyweight', 'body'],
+  ['Barbell curl', 'arms', 'barbell', 'iso'], ['Bicep curl', 'arms', 'dumbbell', 'iso'], ['Hammer curl', 'arms', 'dumbbell', 'iso'],
+  ['Cable curl', 'arms', 'cable', 'iso'], ['Preacher curl', 'arms', 'machine', 'iso'], ['Tricep pushdown', 'arms', 'cable', 'iso'],
+  ['Overhead tricep extension', 'arms', 'dumbbell', 'iso'], ['Skull crusher', 'arms', 'barbell', 'iso'],
+  ['Squat', 'legs', 'barbell', 'legs'], ['Front squat', 'legs', 'barbell', 'legs'], ['Romanian deadlift', 'legs', 'barbell', 'legs'],
+  ['Hip thrust', 'legs', 'barbell', 'legs'], ['Leg press', 'legs', 'machine', 'legs'], ['Hack squat', 'legs', 'machine', 'legs'],
+  ['Goblet squat', 'legs', 'dumbbell', 'legs'], ['Walking lunge', 'legs', 'dumbbell', 'legs'], ['Bulgarian split squat', 'legs', 'dumbbell', 'legs'],
+  ['Jump squat', 'legs', 'bodyweight', 'legs'], ['Leg extension', 'legs', 'machine', 'iso'], ['Leg curl', 'legs', 'machine', 'iso'], ['Calf raise', 'legs', 'machine', 'iso'],
+].map(([name, part, equip, cat]) => ({ name, part, equip, cat }));
+const libFind = (name) => { const n = String(name || '').trim().toLowerCase(); return n ? EX_LIB.find((x) => x.name.toLowerCase() === n) : null; };
+const exCat = (e) => (e.cat && EX_CATS[e.cat] ? e.cat : (libFind(e.name)?.cat || guessCat(e.name)));
+const exPart = (e) => e.part || libFind(e.name)?.part || null;
+function sessionParts(a) {
+  if (a.parts?.length) return a.parts;
+  return [...new Set((a.exercises || []).map(exPart).filter(Boolean))];
+}
+function lastTrained(part) {
+  let best = '';
+  for (const a of state.activities) if (a.type === 'gym' && a.date > best && sessionParts(a).includes(part)) best = a.date;
+  return best;
+}
+function daysAgo(date) { return Math.round((parseYmd(todayStr()) - parseYmd(date)) / 864e5); }
+function agoText(date) { if (!date) return 'never'; const d = daysAgo(date); return d === 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`; }
+// Body part trained longest ago (never-trained first, in split order).
+function nextPart() {
+  return PARTS.map(([k]) => [k, lastTrained(k)]).sort((x, y) => (x[1] || '').localeCompare(y[1] || ''))[0][0];
+}
+// Session MET = average of exercise METs weighted by number of sets, scaled by intensity.
+function gymMix(exercises) {
+  const counts = {}; let sets = 0;
+  for (const e of exercises || []) {
+    const n = (e.sets || []).filter((x) => num(x.reps) > 0).length;
+    if (!n || !String(e.name || '').trim()) continue;
+    const c = exCat(e); counts[c] = (counts[c] || 0) + n; sets += n;
+  }
+  if (!sets) return null;
+  const met = Object.entries(counts).reduce((t, [c, n]) => t + EX_CATS[c].met * n, 0) / sets;
+  return { met, counts, sets };
+}
+function gymMet(a) {
+  const mix = gymMix(a.exercises);
+  if (!mix) return TYPES.gym.met[a.intensity || 'moderate'];
+  return mix.met * (GYM_INTENSITY_FACTOR[a.intensity || 'moderate'] || 1);
+}
 const COMMON_EXERCISES = ['Bench press', 'Incline bench press', 'Dumbbell press', 'Overhead press', 'Squat', 'Front squat',
   'Leg press', 'Deadlift', 'Romanian deadlift', 'Lunge', 'Pull-up', 'Chin-up', 'Lat pulldown', 'Barbell row',
   'Dumbbell row', 'Seated cable row', 'Bicep curl', 'Hammer curl', 'Tricep pushdown', 'Dips', 'Lateral raise',
@@ -137,6 +251,7 @@ function runMet(kmh) {
 }
 function activityMet(a) {
   if (a.type === 'run' && a.distanceKm > 0 && a.durationMin > 0) return runMet(a.distanceKm / (a.durationMin / 60));
+  if (a.type === 'gym') return gymMet(a);
   return TYPES[a.type].met[a.intensity || 'moderate'];
 }
 // Net calories ON TOP of resting burn: (MET - 1) x kg x hours. Resting burn is counted in BMR.
@@ -242,7 +357,8 @@ function renderToday() {
   </section>`;
 
   if (curDate === todayStr()) html += goalCard(true);
-  html += `<section class="card"><h2>Log</h2><div class="quick">
+  const np = nextPart();
+  html += `<section class="card"><h2>Log</h2><div class="muted small" style="margin:-4px 0 10px">Gym next up: <b style="color:var(--ink)">${PART_LABEL[np]}</b> · ${lastTrained(np) ? 'last trained ' + agoText(lastTrained(np)) : 'not trained yet'}</div><div class="quick">
     ${Object.keys(TYPES).map((k) => `<button data-add="${k}">${tile(k)}${TYPES[k].label}</button>`).join('')}
     <button data-add="food">${tile('food')}Food</button>
     <button data-add="weight">${tile('weight')}Body</button></div></section>`;
@@ -269,7 +385,8 @@ function actSummary(a) {
 }
 function actRow(a) {
   const t = TYPES[a.type];
-  const title = a.type === 'gym' && a.exercises?.length ? a.exercises.map((e) => e.name).slice(0, 3).join(', ') + (a.exercises.length > 3 ? '…' : '') : t.label;
+  const sp = a.type === 'gym' ? sessionParts(a) : [];
+  const title = sp.length ? 'Gym · ' + sp.map((p) => PART_LABEL[p]).join(' + ') : a.type === 'gym' && a.exercises?.length ? a.exercises.map((e) => e.name).slice(0, 3).join(', ') + (a.exercises.length > 3 ? '…' : '') : t.label;
   return `<li data-edit="act:${a.id}">${tile(a.type)}<div class="grow"><div>${esc(title)}</div><div class="muted small">${esc(actSummary(a))}</div></div><span class="kcal">${fmt(activityKcal(a))} kcal</span></li>`;
 }
 function macroLine(foods, date) {
@@ -390,68 +507,152 @@ function lastPerformance(name, excludeId) {
   const ex = sessions[0].exercises.find((e) => e.name.trim().toLowerCase() === n);
   return `Last time (${fmtDate(sessions[0].date, { day: 'numeric', month: 'short' })}): ` + ex.sets.map((s) => `${s.reps}×${s.kg ? fmt1(s.kg) + 'kg' : 'BW'}`).join(', ');
 }
+function lastSets(name, excludeId) {
+  const n = String(name || '').trim().toLowerCase();
+  const prev = state.activities.filter((x) => x.type === 'gym' && x.id !== excludeId && x.exercises?.some((e) => e.name.trim().toLowerCase() === n))
+    .sort((x, y) => (y.date + y.id).localeCompare(x.date + x.id))[0];
+  const e = prev?.exercises.find((z) => z.name.trim().toLowerCase() === n);
+  return e ? e.sets.map((x) => ({ reps: x.reps, kg: x.kg || '' })) : null;
+}
 function gymForm(a, date) {
   let ex = a ? JSON.parse(JSON.stringify(a.exercises || [])) : [];
-  if (!ex.length) ex = [{ name: '', sets: [{ reps: '', kg: '' }] }];
+  let parts = a ? [...sessionParts(a)] : [];
+  const suggested = nextPart();
+  const allEquip = EQUIP.map(([k]) => k);
+  const equip = allEquip; // equipment filter removed by request: always show every exercise
+  const swapOpen = new Set();
   openSheet(`<form><h3>${a ? 'Edit' : 'Log'} Gym Session</h3>
-    <label class="f">Date<input type="date" name="date" value="${esc(a?.date || date)}" max="${todayStr()}" required></label>
+    <div class="glabel">Focus today <span class="muted small">pick 1 or 2</span></div>
+    <div class="parttiles" id="parts"></div>
+    <div id="focusFig"></div>
+    <div id="lib"></div>
+    <div id="exs"></div>
+    <button type="button" id="addEx" class="photo-btn" style="margin-bottom:14px">+ Add other exercise</button>
     <div class="two">
       <label class="f">Duration (min)<input type="number" name="durationMin" inputmode="decimal" min="1" step="any" value="${esc(a?.durationMin || '')}" required></label>
-      <label class="f">Intensity<select name="intensity">${Object.entries(INTENSITY).map(([k, v]) => `<option value="${k}" ${k === (a?.intensity || 'moderate') ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label class="f">Effort<select name="intensity">${Object.entries({ light: 'Light: long rests', moderate: 'Moderate', hard: 'Hard: short rests' }).map(([k, v]) => `<option value="${k}" ${k === (a?.intensity || 'moderate') ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
     </div>
-    <div id="exs"></div>
-    <button type="button" id="addEx" style="width:100%;margin-bottom:12px">+ Add exercise</button>
-    <label class="f">Calories from your watch (optional)<input type="number" name="kcalOverride" inputmode="numeric" min="0" value="${esc(a?.kcalOverride || '')}"></label>
     <div class="estimate" id="est"></div>
-    <label class="f">Notes<textarea name="notes">${esc(a?.notes || '')}</textarea></label>
+    <details class="more"><summary class="muted small">More: date, watch calories, notes</summary>
+      <label class="f" style="margin-top:10px">Date<input type="date" name="date" value="${esc(a?.date || date)}" max="${todayStr()}" required></label>
+      <label class="f">Calories from your watch (optional)<input type="number" name="kcalOverride" inputmode="numeric" min="0" value="${esc(a?.kcalOverride || '')}"></label>
+      <label class="f">Notes<textarea name="notes">${esc(a?.notes || '')}</textarea></label>
+    </details>
     ${formActions(a)}</form>`);
   const box = $('#exs');
+  const has = (name) => ex.some((e) => e.name.trim().toLowerCase() === name.toLowerCase());
+  const drawParts = () => {
+    $('#parts').innerHTML = PARTS.map(([k, l]) => {
+      const lt = lastTrained(k);
+      return `<button type="button" class="ptile ${parts.includes(k) ? 'on' : ''}" data-part="${k}" aria-pressed="${parts.includes(k)}">${bodySvg([k], [k === 'back' ? 'back' : 'front'])}<b>${l}</b><span class="sub ${k === suggested && !a ? 'next' : ''}">${k === suggested && !a ? 'next up' : lt ? (daysAgo(lt) === 0 ? 'today' : daysAgo(lt) + 'd ago') : 'new'}</span></button>`;
+    }).join('');
+    $('#focusFig').innerHTML = parts.length ? `<div class="focusfig">${bodySvg(parts)}<div><div class="ftitle">${parts.map((p) => PART_LABEL[p]).join(' + ')}</div>${parts.map((p) => `<div class="fmus"><i></i>${PART_MUSCLES[p]}</div>`).join('')}${parts.length > 2 ? '<div class="muted small" style="margin-top:6px">That\'s a lot for one day. Most splits do 1 or 2.</div>' : ''}</div></div>` : '';
+  };
+  const options = (part) => EX_LIB.filter((x) => x.part === part && equip.includes(x.equip))
+    .sort((x, y) => EX_CATS[y.cat].met - EX_CATS[x.cat].met);
+  const expanded = new Set();
+  const drawLib = () => {
+    if (!parts.length) { $('#lib').innerHTML = `<div class="muted small" style="margin:4px 0 12px">Tap a body part to see its exercises. Suggested next: <b>${PART_LABEL[suggested]}</b> (${lastTrained(suggested) ? 'last trained ' + agoText(lastTrained(suggested)) : 'not trained yet'}).</div>`; return; }
+    $('#lib').innerHTML = parts.map((p) => `<div class="libpart"><div class="glabel">${PART_LABEL[p]} <span class="muted small">tap to add · 🔥 = burns more</span></div><div class="chips">${
+      (() => { const o = options(p); const show = expanded.has(p) ? o : o.filter((x, i) => i < 6 || has(x.name));
+        return show.map((x) => `<button type="button" class="chip lib ${has(x.name) ? 'on' : ''}" data-lib="${esc(x.name)}">${has(x.name) ? '✓ ' : ''}${esc(x.name)}${EX_CATS[x.cat].met >= 4.5 ? ' 🔥' : ''}</button>`).join('')
+          + (o.length > show.length ? `<button type="button" class="chip more" data-more="${p}">+${o.length - show.length} more</button>` : '')
+          || ''; })()
+    }</div></div>`).join('');
+  };
+  const blankEx = () => ({ name: '', sets: [{ reps: '', kg: '' }] });
   const drawEx = () => {
-    box.innerHTML = ex.map((e, i) => `<div class="ex" data-i="${i}">
+    box.innerHTML = ex.map((e, i) => {
+      const lib = libFind(e.name);
+      const alts = lib ? EX_LIB.filter((x) => x.part === lib.part && x.name !== lib.name && equip.includes(x.equip)).sort((x, y) => EX_CATS[y.cat].met - EX_CATS[x.cat].met) : [];
+      return `<div class="ex" data-i="${i}">
       <div class="row"><input class="grow" list="exList" placeholder="Exercise name" data-f="name" value="${esc(e.name)}">
+        ${lib ? `<button type="button" class="link" data-act="swap">Swap</button>` : ''}
         <button type="button" class="link danger" data-act="rmEx" aria-label="Remove exercise">✕</button></div>
+      ${swapOpen.has(i) ? `<div class="swapbox"><div class="muted small">Station taken? Same muscles, different exercise:</div><div class="chips">${alts.map((x) => `<button type="button" class="chip lib" data-alt="${esc(x.name)}">${esc(x.name)}${EX_CATS[x.cat].met >= 4.5 ? ' 🔥' : ''}</button>`).join('') || ''}</div></div>` : ''}
+      ${lib ? '' : `<div class="row cat"><span class="muted small">Type</span><select data-f="cat" class="catsel">${Object.entries(EX_CATS).map(([k, c]) => `<option value="${k}" ${k === exCat(e) ? 'selected' : ''}>${c.label}</option>`).join('')}</select></div>`}
       <div class="hint">${esc(lastPerformance(e.name, a?.id))}</div>
       <div class="sethead"><span>Set</span><span>Reps</span><span>kg</span><span></span></div>
-      ${e.sets.map((s, j) => `<div class="set" data-j="${j}"><span class="n">${j + 1}</span>
-        <input type="number" inputmode="numeric" min="0" data-f="reps" value="${esc(s.reps)}" placeholder="reps">
-        <input type="number" inputmode="decimal" min="0" step="any" data-f="kg" value="${esc(s.kg)}" placeholder="body wt">
+      ${e.sets.map((st, j) => `<div class="set" data-j="${j}"><span class="n">${j + 1}</span>
+        <input type="number" inputmode="numeric" min="0" data-f="reps" value="${esc(st.reps)}" placeholder="reps">
+        <input type="number" inputmode="decimal" min="0" step="any" data-f="kg" value="${esc(st.kg)}" placeholder="body wt">
         <button type="button" data-act="rmSet" aria-label="Remove set">−</button></div>`).join('')}
-      <button type="button" class="link" data-act="addSet">+ Add set</button></div>`).join('');
+      <button type="button" class="link" data-act="addSet">+ Add set</button></div>`;
+    }).join('');
   };
-  drawEx();
+  const redraw = () => { drawParts(); drawLib(); drawEx(); upd(); };
+  const addLib = (name) => {
+    if (has(name)) { ex = ex.filter((e) => e.name.trim().toLowerCase() !== name.toLowerCase() || e.sets.some((x) => num(x.reps) > 0)); redraw(); return; }
+    ex = ex.filter((e) => e.name.trim() || e.sets.some((x) => num(x.reps) > 0)); // drop empty placeholder
+    const lib = libFind(name);
+    ex.push({ name, part: lib?.part, sets: lastSets(name, a?.id) || [{ reps: '', kg: '' }, { reps: '', kg: '' }, { reps: '', kg: '' }] });
+    redraw();
+  };
+  $('#sheetBody form').addEventListener('click', (e) => {
+    const pb = e.target.closest('[data-part]');
+    if (pb) { const k = pb.dataset.part; parts = parts.includes(k) ? parts.filter((x) => x !== k) : [...parts, k]; redraw(); return; }
+    const mb = e.target.closest('[data-more]');
+    if (mb) { expanded.add(mb.dataset.more); drawLib(); return; }
+    const lb = e.target.closest('[data-lib]');
+    if (lb) { addLib(lb.dataset.lib); return; }
+    const ab = e.target.closest('[data-alt]');
+    if (ab) { const i = +ab.closest('.ex').dataset.i; const lib = libFind(ab.dataset.alt); const keepSets = ex[i].sets.map((x) => ({ reps: x.reps, kg: '' }));
+      ex[i] = { name: lib.name, part: lib.part, sets: lastSets(lib.name, a?.id) || keepSets }; swapOpen.delete(i); redraw(); }
+  });
   box.addEventListener('input', (e) => {
     const el = e.target, exEl = el.closest('.ex'); if (!exEl) return;
     const i = +exEl.dataset.i;
-    if (el.dataset.f === 'name') { ex[i].name = el.value; exEl.querySelector('.hint').textContent = lastPerformance(el.value, a?.id); return; }
-    const j = +el.closest('.set').dataset.j; ex[i].sets[j][el.dataset.f] = el.value;
+    if (el.dataset.f === 'cat') { ex[i].cat = el.value; upd(); return; }
+    if (el.dataset.f === 'name') {
+      ex[i].name = el.value; delete ex[i].part;
+      exEl.querySelector('.hint').textContent = lastPerformance(el.value, a?.id);
+      const cs = exEl.querySelector('.catsel'); if (cs && !ex[i].cat) cs.value = guessCat(el.value);
+      upd(); return;
+    }
+    const j = +el.closest('.set').dataset.j; ex[i].sets[j][el.dataset.f] = el.value; upd();
   });
+  box.addEventListener('change', (e) => { if (e.target.dataset.f === 'name') { drawLib(); drawEx(); upd(); } });
   box.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]'); if (!b) return;
     const i = +b.closest('.ex').dataset.i;
+    if (b.dataset.act === 'swap') { if (swapOpen.has(i)) swapOpen.delete(i); else swapOpen.add(i); }
     if (b.dataset.act === 'addSet') { const last = ex[i].sets[ex[i].sets.length - 1] || { reps: '', kg: '' }; ex[i].sets.push({ ...last }); }
     if (b.dataset.act === 'rmSet') { ex[i].sets.splice(+b.closest('.set').dataset.j, 1); if (!ex[i].sets.length) ex[i].sets.push({ reps: '', kg: '' }); }
-    if (b.dataset.act === 'rmEx') { ex.splice(i, 1); if (!ex.length) ex.push({ name: '', sets: [{ reps: '', kg: '' }] }); }
-    drawEx(); upd();
+    if (b.dataset.act === 'rmEx') { ex.splice(i, 1); swapOpen.clear(); }
+    drawLib(); drawEx(); upd();
   });
-  $('#addEx').onclick = () => { ex.push({ name: '', sets: [{ reps: '', kg: '' }] }); drawEx(); box.lastElementChild.querySelector('input').focus(); };
+  $('#addEx').onclick = () => { ex.push(blankEx()); drawEx(); box.lastElementChild.querySelector('input').focus(); };
   const form = wireForm((fd) => {
-    const exercises = ex.map((e) => ({ name: e.name.trim(), sets: e.sets.filter((s) => num(s.reps) > 0).map((s) => ({ reps: num(s.reps), kg: num(s.kg) })) }))
-      .filter((e) => e.name && e.sets.length);
+    const exercises = ex.map((e) => {
+      const o = { name: e.name.trim(), sets: e.sets.filter((x) => num(x.reps) > 0).map((x) => ({ reps: num(x.reps), kg: num(x.kg) })) };
+      const p = exPart(e); if (p) o.part = p;
+      if (e.cat && !libFind(e.name)) o.cat = e.cat;
+      return o;
+    }).filter((e) => e.name && e.sets.length);
+    if (!num(fd.get('durationMin'))) { alert('Enter how long the session took.'); return false; }
+    const finalParts = [...new Set([...parts, ...exercises.map((e) => e.part).filter(Boolean)])];
     upsert(state.activities, {
-      id: a?.id || uid(), type: 'gym', date: fd.get('date'), durationMin: num(fd.get('durationMin')),
+      id: a?.id || uid(), type: 'gym', date: fd.get('date'), durationMin: num(fd.get('durationMin')), parts: finalParts,
       intensity: fd.get('intensity'), kcalOverride: num(fd.get('kcalOverride')), notes: fd.get('notes') || '', exercises,
     });
     toast('Gym session saved');
   }, () => remove(state.activities, a.id));
   const upd = () => {
     const fd = new FormData(form);
-    const tmp = { type: 'gym', date: fd.get('date') || date, durationMin: num(fd.get('durationMin')), intensity: fd.get('intensity') };
-    const vol = ex.reduce((s, e) => s + e.sets.reduce((t, x) => t + num(x.reps) * num(x.kg), 0), 0);
-    $('#est').innerHTML = `Estimated burn: <b>${fmt(estimateKcal(tmp))} kcal</b> above resting${vol ? ` · volume ${fmt(vol)} kg` : ''}`;
+    const tmp = { type: 'gym', date: fd.get('date') || date, durationMin: num(fd.get('durationMin')), intensity: fd.get('intensity'), exercises: ex };
+    const vol = ex.reduce((t, e) => t + e.sets.reduce((u, x) => u + num(x.reps) * num(x.kg), 0), 0);
+    const mix = gymMix(ex);
+    const mixTxt = mix ? Object.entries(mix.counts).sort((x, y) => y[1] - x[1]).map(([c, n]) => `${n} set${n > 1 ? 's' : ''} ${EX_CATS[c].short}`).join(', ') : '';
+    const tip = mix && (mix.counts.iso || 0) > mix.sets / 2 ? ' Tip: start with a 🔥 exercise to burn more.' : '';
+    $('#est').innerHTML = tmp.durationMin
+      ? `Estimated burn: <b>${fmt(estimateKcal(tmp))} kcal</b> above resting${vol ? ` · volume ${fmt(vol)} kg` : ''}
+        ${mix ? `<div class="small muted" style="margin-top:4px">Mix: ${esc(mixTxt)}.${tip}</div>` : ''}`
+      : '<span class="muted">Enter the duration to see calories burned.</span>';
   };
-  form.addEventListener('input', upd); upd();
+  form.addEventListener('input', upd);
+  if (!a && !ex.length) parts = [];
+  redraw();
 }
-
 function recentFoods() {
   const seen = new Map();
   for (const f of [...state.foods].sort((x, y) => (y.date + y.id).localeCompare(x.date + x.id))) {
@@ -477,11 +678,9 @@ function foodForm(f, date) {
       </div>
     </div>
     ${recent.length ? `<div class="muted small" style="margin-bottom:6px">Recent (tap to fill)</div><div class="chips" style="margin-bottom:12px">${recent.map((r, i) => `<button type="button" class="chip" data-r="${i}">${esc(r.name)} · ${fmt(r.kcal)}</button>`).join('')}</div>` : ''}
+    <div class="f"><span>Meal</span><div class="seg" role="radiogroup" aria-label="Meal">${MEALS.map((m) => `<label><input type="radio" name="meal" value="${m}" ${m === (f?.meal || defaultMeal()) ? 'checked' : ''}><span>${m}</span></label>`).join('')}</div></div>
     <label class="f">What did you eat?<input name="name" list="foodList" value="${v('name')}" placeholder="e.g. Chicken rice" required></label>
-    <div class="two">
-      <label class="f">Calories (kcal)<input type="number" name="kcal" inputmode="numeric" min="0" step="any" value="${v('kcal')}" required></label>
-      <label class="f">Meal<select name="meal">${MEALS.map((m) => `<option ${m === (f?.meal || defaultMeal()) ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
-    </div>
+    <label class="f">Calories (kcal)<input type="number" name="kcal" inputmode="numeric" min="0" step="any" value="${v('kcal')}" required></label>
     <div class="three">
       <label class="f">Protein (g)<input type="number" name="protein" inputmode="decimal" min="0" step="any" value="${v('protein')}"></label>
       <label class="f">Carbs (g)<input type="number" name="carbs" inputmode="decimal" min="0" step="any" value="${v('carbs')}"></label>
@@ -701,6 +900,7 @@ function remove(arr, id) { const i = arr.findIndex((x) => x.id === id); if (i >=
 function refreshDatalists() {
   const names = new Set();
   state.activities.filter((a) => a.type === 'gym').forEach((a) => (a.exercises || []).forEach((e) => names.add(e.name)));
+  EX_LIB.forEach((x) => names.add(x.name));
   COMMON_EXERCISES.forEach((n) => names.add(n));
   $('#exList').innerHTML = [...names].map((n) => `<option value="${esc(n)}">`).join('');
   $('#foodList').innerHTML = recentFoods().map((f) => `<option value="${esc(f.name)}">`).join('');
@@ -776,6 +976,16 @@ function renderProgress() {
   // Weight
   const ws = [...state.weights].sort((x, y) => x.date.localeCompare(y.date)).slice(-30);
   html += `<section class="card"><h2>Body weight (kg)</h2>${ws.length >= 2 ? lineChart(ws) : ws.length ? `<div>${fmt1(ws[0].kg)} kg on ${esc(fmtDate(ws[0].date))}. Log again to see a trend.</div>` : '<div class="empty">Log your weight to see a trend.</div>'}</section>`;
+
+  // Body-part rotation
+  const from7r = addDays(today, -6);
+  const rot = PARTS.map(([k, l]) => {
+    const lt = lastTrained(k);
+    const sets7 = state.activities.filter((x) => x.type === 'gym' && x.date >= from7r).reduce((t, x) => t + (x.exercises || []).filter((e) => exPart(e) === k).reduce((u, e) => u + e.sets.length, 0), 0);
+    return `<tr><td>${l}</td><td class="r">${esc(agoText(lt))}</td><td class="r">${sets7 || '–'}</td></tr>`;
+  }).join('');
+  html += `<section class="card"><h2>Gym split</h2><table class="t"><tr><th>Body part</th><th class="r">Last trained</th><th class="r">Sets, 7 days</th></tr>${rot}</table>
+    <p class="muted small" style="margin:8px 0 0">Next up: <b>${PART_LABEL[nextPart()]}</b>. Most people aim for about 10 to 20 sets per body part each week.</p></section>`;
 
   // Body measurements: first vs latest
   const msr = [...state.measurements].sort((x, y) => x.date.localeCompare(y.date));

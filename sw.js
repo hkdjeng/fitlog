@@ -1,5 +1,5 @@
 // Offline cache for the app shell. Bump VERSION whenever you change app files.
-const VERSION = 'fitlog-v7';
+const VERSION = 'fitlog-v11';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.json', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {

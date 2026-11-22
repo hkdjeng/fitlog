@@ -246,3 +246,52 @@ details summary { cursor: pointer; }
 .protein .pbar { margin: 6px 0; height: 6px; }
 .protein .pbar > div { background: var(--c-gym); }
 svg.chart .target { stroke: var(--c-weight); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.ex .cat { margin-top: 6px; gap: 10px; }
+.ex .catsel { flex: 1; padding: 7px 30px 7px 10px; font-size: 15px; background-color: var(--fill); }
+.glabel { font-size: 13px; color: var(--muted); margin: 4px 0 8px; text-transform: uppercase; letter-spacing: .02em; }
+.glabel .muted { text-transform: none; letter-spacing: 0; }
+.sheet .chip.part { display: inline-flex; flex-direction: column; align-items: center; padding: 8px 12px; line-height: 1.15; font-weight: 600; }
+.chip.part .sub { font-size: 11px; font-weight: 400; color: var(--muted); }
+.chip.part.on .sub { color: inherit; opacity: .8; }
+.sheet .chip.small-chip { padding: 5px 11px; font-size: 14px; }
+.sheet .chip.lib { font-size: 14px; padding: 7px 12px; }
+.sheet #parts, .sheet #equip { margin-bottom: 14px; }
+.libpart { margin-bottom: 14px; }
+.swapbox { background: var(--fill); border-radius: 10px; padding: 8px 10px; margin-top: 8px; }
+.swapbox .chips { margin-top: 6px; }
+.swapbox .chip { background: var(--card); }
+details.more { margin-bottom: 8px; }
+details.more summary { padding: 6px 0; }
+.sheet .chip.on { background: var(--ink); color: var(--bg); }
+.sheet .chip.more { color: var(--accent); }
+
+/* Body figure: gym focus tiles + combined focus picture */
+:root { --fig-skin: #e9e9ee; --fig-mus: #cfcfd5; --fig-on: #34c759; --fig-shorts: #3a3a3c; }
+@media (prefers-color-scheme: dark) { :root { --fig-skin: #3a3a3c; --fig-mus: #58585d; --fig-on: #30d158; --fig-shorts: #111113; } }
+.fig { display: block; }
+.fig .sk { fill: var(--fig-skin); }
+.fig .mu { fill: var(--fig-mus); stroke: var(--card); stroke-width: .9; stroke-linejoin: round; transition: fill .2s; }
+.fig .mu.on { fill: var(--fig-on); }
+.fig .sh { fill: var(--fig-shorts); }
+.parttiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 4px 0 10px; }
+.ptile { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 2px 7px; border-radius: 12px; background: var(--card); color: var(--ink); border: 2px solid transparent; font: inherit; line-height: 1.15; min-width: 0; }
+.ptile .fig { width: 100%; max-width: 46px; height: auto; margin-bottom: 4px; }
+.ptile b { font-size: 12px; font-weight: 600; }
+.ptile .sub { font-size: 10.5px; color: var(--muted); }
+.ptile .sub.next { color: var(--good); font-weight: 600; }
+.ptile.on { border-color: var(--fig-on); }
+.focusfig { display: flex; align-items: center; gap: 14px; background: var(--card); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px; }
+.focusfig .fig { width: 46%; max-width: 170px; height: auto; flex: none; }
+.focusfig .ftitle { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+.focusfig .fmus { font-size: 13px; color: var(--ink2); display: flex; gap: 6px; align-items: baseline; margin-top: 3px; }
+.focusfig .fmus i { width: 8px; height: 8px; border-radius: 50%; background: var(--fig-on); flex: none; transform: translateY(-1px); }
+
+/* Segmented meal picker */
+div.f { margin-bottom: 14px; font-size: 13px; color: var(--muted); }
+.seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin-top: 5px; padding: 2px; border-radius: 10px; background: var(--fill); }
+.sheet .seg { background: var(--line); }
+.seg label { position: relative; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg span { display: block; text-align: center; padding: 8px 0; border-radius: 8px; font-size: 14px; color: var(--ink); cursor: pointer; }
+.seg input:checked + span { background: var(--card); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.seg input:focus-visible + span { outline: 2px solid var(--accent); }
