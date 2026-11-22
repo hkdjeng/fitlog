@@ -527,7 +527,7 @@ function wirePhoto(form) {
   input.onchange = async () => {
     const file = input.files[0]; input.value = ''; if (!file) return;
     try {
-      image = await shrinkImage(file, 1024);
+      image = await shrinkImage(file, 896);
       $('#photoPrev').src = 'data:' + image.mime + ';base64,' + image.b64;
       area.hidden = false; $('#photoBtn').hidden = true;
       run();
@@ -536,7 +536,9 @@ function wirePhoto(form) {
   $('#photoRun').onclick = () => image && run();
   async function run() {
     const btn = $('#photoRun'); btn.disabled = true;
-    status.innerHTML = 'Looking at your meal… (a few seconds)';
+    const t0 = Date.now();
+    status.innerHTML = 'Looking at your meal… <span id="aiSecs">0</span> s';
+    const tick = setInterval(() => { const el = $('#aiSecs'); if (el) el.textContent = Math.round((Date.now() - t0) / 1000); }, 1000);
     try {
       const r = await estimateFoodPhoto(image, $('#photoNote').value.trim());
       form.name.value = r.name || 'Meal';
@@ -551,10 +553,17 @@ function wirePhoto(form) {
         <div class="small muted" style="margin-top:4px">Check the numbers below and fix anything before saving. Portions are guesses.</div>`;
     } catch (e) {
       status.innerHTML = `<b>Couldn't estimate.</b> ${esc(e.message)}`;
-    } finally { btn.disabled = false; }
+    } finally { clearInterval(tick); btn.disabled = false; }
   }
 }
 
+async function fetchWithTimeout(url, opts, ms) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ctl.signal }); }
+  catch (e) { throw new Error(e.name === 'AbortError' ? `Google took longer than ${Math.round(ms / 1000)} seconds to answer. Tap Estimate again.` : `Could not reach Google (${e.message || e.name}). Check your internet connection and tap Estimate again.`); }
+  finally { clearTimeout(t); }
+}
 function shrinkImage(file, maxSide) {
   return new Promise((res, rej) => {
     const url = URL.createObjectURL(file);
@@ -578,7 +587,7 @@ async function geminiCandidates(key, forceRefresh) {
   if (manual) return [manual];
   let cached = null; try { cached = JSON.parse(localStorage.getItem(GEMINI_MODEL) || 'null'); } catch (e) { /* ignore */ }
   if (!forceRefresh && cached && cached.list && Date.now() - cached.at < 7 * 864e5) return cached.list;
-  const r = await fetch(`${GEMINI_BASE}/models?pageSize=1000`, { headers: { 'x-goog-api-key': key } });
+  const r = await fetchWithTimeout(`${GEMINI_BASE}/models?pageSize=1000`, { headers: { 'x-goog-api-key': key } }, 15000);
   if (!r.ok) throw new Error(r.status === 400 || r.status === 403 ? 'Google rejected the API key. Check it in Settings.' : `Gemini error ${r.status}`);
   const models = ((await r.json()).models || [])
     .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
@@ -620,17 +629,17 @@ async function estimateFoodPhoto(image, note) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const models = await geminiCandidates(key, attempt > 0);
     for (const model of models) {
-      for (const useSchema of [true, false]) {
+      const modern = /^gemini-([3-9]|\d\d)/.test(model); // Gemini 3+ supports thinkingLevel
+      for (const [useSchema, fast] of modern ? [[true, true], [true, false], [false, false]] : [[true, false], [false, false]]) {
+        const generationConfig = useSchema ? { responseMimeType: 'application/json', responseSchema: FOOD_SCHEMA } : { responseMimeType: 'application/json' };
+        if (fast) generationConfig.thinkingConfig = { thinkingLevel: 'low' }; // much quicker answers
         const body = {
           contents: [{ role: 'user', parts: [{ text: foodPrompt(note) }, { inline_data: { mime_type: image.mime, data: image.b64 } }] }],
-          generationConfig: useSchema ? { responseMimeType: 'application/json', responseSchema: FOOD_SCHEMA } : { responseMimeType: 'application/json' },
+          generationConfig,
         };
-        let r;
-        try {
-          r = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body),
-          });
-        } catch (e) { throw new Error('Could not reach Google. Check your connection.'); }
+        const r = await fetchWithTimeout(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body),
+        }, 60000);
         if (r.ok) {
           const j = await r.json();
           const parts = j.candidates?.[0]?.content?.parts || [];
@@ -642,7 +651,7 @@ async function estimateFoodPhoto(image, note) {
           return out;
         }
         const errText = await r.text();
-        if (r.status === 400 && useSchema && /schema|response_?mime|generation_?config/i.test(errText)) continue; // retry without schema
+        if (r.status === 400 && (fast || useSchema) && /schema|response_?mime|generation_?config|thinking/i.test(errText)) continue; // retry simpler
         if (r.status === 400 && /API key/i.test(errText)) throw new Error('Google rejected the API key. Check it in Settings.');
         if (r.status === 403) throw new Error('This API key is not allowed to use Gemini. Create a key in Google AI Studio.');
         lastErr = new Error(r.status === 429 ? 'Free daily limit reached for now. Try again later or type calories by hand.'
